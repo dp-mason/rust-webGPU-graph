@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>hello-wasm example</title>
+  </head>
+  <body>
+    <script type="module">
+      import init, { run } from "./pkg/rust_webGPU_graph.js";
+      init().then(() => {
+        run();
+      });
+    </script>
+    <h1>bingus</h1><br>
+    <div id="wasm-example"></div>
+  </body>
+</html>
