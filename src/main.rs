@@ -5,5 +5,5 @@ use lib::run;
 fn main() {
     // block_on is passed a "future" that it waits on
     // run is an async function, so it returns a future immediately
-    //pollster::block_on(run());
+    pollster::block_on(run());
 }
