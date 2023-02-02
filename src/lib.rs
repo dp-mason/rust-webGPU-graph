@@ -17,6 +17,7 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     window: Window,
+    render_pipeline: wgpu::RenderPipeline,
 }
 impl State {
     async fn new(window: Window) -> Self {
@@ -73,6 +74,58 @@ impl State {
 
         let load_color = wgpu::Color{r:0.0, g:0.0, b:0.0, a:1.0};
 
+        // "include_str!" imports the contents of a file as a static string, which can be useful
+        // I instead use include_wgsl! which creates a ShaderModuleDescriptor from the file that you supply
+        let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+
+        // create proper pipeline layout (declares buffers and such, look into this more)
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Basic Pipeline Layout"),
+                bind_group_layouts: &[],
+                push_constant_ranges: &[], // ???
+            });
+        
+        // create a render pipeline
+        let render_pipeline = 
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{
+                label: Some("Basic Pipeline"),
+                layout: Some(&render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: "vert_main",
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: "frag_main",
+                    targets: &[Some(wgpu::ColorTargetState{
+                        format:config.format,                   // matches the color config of the SurfaceTexture
+                        blend: Some(wgpu::BlendState::REPLACE), // replace the old pixel data with new data
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList, // every three verts forms a triangle
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw, // counter-clockwise is the direction tris are drawn
+                    cull_mode: Some(wgpu::Face::Back), // if the triangle is facing away, do not draw it
+                    // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    // Requires Features::DEPTH_CLIP_CONTROL
+                    unclipped_depth: false,
+                    // Requires Features::CONSERVATIVE_RASTERIZATION
+                    conservative: false,
+                },
+                depth_stencil: None, // is stencil like a silhoutte of object?
+                multisample: wgpu::MultisampleState {
+                    count: 1, // ?? look into the topic of "multisampling", like raytrace samples?
+                    mask: !0, // all samples should be active ?? how is "!0" diff than "1"
+                    alpha_to_coverage_enabled: false, // ?? has to do with anti-aliasing
+                },
+                multiview: None, // ?? look into what "array textures" are, more than one surface texture?
+            });
+
         Self {
             surface,
             device,
@@ -81,6 +134,7 @@ impl State {
             config,
             size,
             window,
+            render_pipeline,
         }
     }
 
@@ -136,19 +190,26 @@ impl State {
         //  leaves that scope thus releasing the mutable borrow on encoder and allowing us to finish() it.
         //  If you don't like the {}, you can also use drop(render_pass) to achieve the same effect.
         {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        //load: wgpu::LoadOp::Clear(color),
-                        load: wgpu::LoadOp::Clear(self.load_color),
-                        store: true,
-                    },
-                })],
+                color_attachments: &[
+                    // This is what @location(0) in the fragment shader targets in the frag shader wgsl code
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            //load: wgpu::LoadOp::Clear(color),
+                            load: wgpu::LoadOp::Clear(self.load_color),
+                            store: true,
+                        },
+                    })
+                ],
                 depth_stencil_attachment: None,
             });
+
+            render_pass.set_pipeline(&self.render_pipeline); 
+            //draw something with 3 vertices, and 1 instance. This is where @builtin(vertex_index) comes from in the vert shader wgsl code
+            render_pass.draw(0..3, 0..1); // remember range is not max inclusive
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
