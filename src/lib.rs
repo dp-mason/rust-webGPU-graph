@@ -12,6 +12,7 @@ use wasm_bindgen::prelude::*;
 struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
+    load_color: wgpu::Color, // for the challenge section, delete later
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
@@ -70,9 +71,12 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        let load_color = wgpu::Color{r:0.0, g:0.0, b:0.0, a:1.0};
+
         Self {
             surface,
             device,
+            load_color,
             queue,
             config,
             size,
@@ -93,7 +97,19 @@ impl State {
         }
     }
     fn input(&mut self, event: &WindowEvent) -> bool {
-        false
+        // match to some input events you want to handle
+        // if this event is not in your list of input events, return false so it may be consumed
+        // by another process
+        match event {
+            WindowEvent::CursorMoved{ position,.. } => {
+                log::info!("Movement is Registering");
+                let redval = position.x / self.size.width as f64;
+                let greenval = position.y / self.size.height as f64;
+                self.load_color = wgpu::Color { r: redval, g:greenval, b:1.0, a:1.0 };
+                true
+            },
+            _ => false
+        }
     }
 
     fn update(&mut self) {
@@ -101,7 +117,7 @@ impl State {
     }
 
     // ??? Why does the render method take a mutable ref? writing to the surface?
-    fn render(&mut self, color:wgpu::Color) -> Result<(), wgpu::SurfaceError> {
+    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output_texture = self.surface.get_current_texture()?;
         let view = output_texture
             .texture
@@ -127,7 +143,7 @@ impl State {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         //load: wgpu::LoadOp::Clear(color),
-                        load: wgpu::LoadOp::Clear(color),
+                        load: wgpu::LoadOp::Clear(self.load_color),
                         store: true,
                     },
                 })],
@@ -206,21 +222,13 @@ pub async fn run() {
                             // new_inner_size is &&mut so w have to dereference it twice
                             state.resize(**new_inner_size);
                         }
-                        WindowEvent::CursorMoved{ device_id:_, position:pos, modifiers:_ } => {
-                            let redval = pos.x / state.size.width as f64;
-                            let greenval = pos.y / state.size.height as f64;
-                            match state.render(wgpu::Color{ r:redval, g:greenval, b:1.0, a:1.0 }) {
-                                Ok(_) => {},
-                                Err(_) => {log::warn!("Error in \"Cursor Moved\" rendering")}
-                            };
-                        }
                         _ => {}
                     }
                 }
             }
             Event::RedrawRequested(window_id) if window_id == state.window().id() => {
                 state.update();
-                match state.render(wgpu::Color{r:0.0, g:1.0, b:0.0, a:1.0}) {
+                match state.render() {
                     Ok(_) => {}
                     // Reconfigure the surface if it's lost or outdated
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
