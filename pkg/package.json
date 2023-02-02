@@ -1,0 +1,12 @@
+{
+  "name": "rust-webGPU-graph",
+  "version": "0.1.0",
+  "files": [
+    "rust_webGPU_graph_bg.wasm",
+    "rust_webGPU_graph.js",
+    "rust_webGPU_graph.d.ts"
+  ],
+  "module": "rust_webGPU_graph.js",
+  "types": "rust_webGPU_graph.d.ts",
+  "sideEffects": false
+}
