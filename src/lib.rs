@@ -6,7 +6,6 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -94,7 +93,7 @@ impl State {
         }
     }
     fn input(&mut self, event: &WindowEvent) -> bool {
-        true
+        false
     }
 
     fn update(&mut self) {
@@ -127,6 +126,7 @@ impl State {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
+                        //load: wgpu::LoadOp::Clear(color),
                         load: wgpu::LoadOp::Clear(color),
                         store: true,
                     },
@@ -184,7 +184,9 @@ pub async fn run() {
                 ref event,
                 window_id,
             } if window_id == state.window().id() => {
+                log::info!("event occurred for this window: {:?}\n", event);
                 if !state.input(event) {
+                    log::info!("checking input\n");
                     // UPDATED!
                     match event {
                         WindowEvent::CloseRequested
@@ -205,8 +207,12 @@ pub async fn run() {
                             state.resize(**new_inner_size);
                         }
                         WindowEvent::CursorMoved{ device_id:_, position:pos, modifiers:_ } => {
-                            println!("poop");
-                            state.render(wgpu::Color{ r:1.0, g:1.0, b:1.0, a:1.0 });
+                            let redval = pos.x / state.size.width as f64;
+                            let greenval = pos.y / state.size.height as f64;
+                            match state.render(wgpu::Color{ r:redval, g:greenval, b:1.0, a:1.0 }) {
+                                Ok(_) => {},
+                                Err(_) => {log::warn!("Error in \"Cursor Moved\" rendering")}
+                            };
                         }
                         _ => {}
                     }
