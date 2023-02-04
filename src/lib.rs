@@ -1,5 +1,7 @@
+use std::num::NonZeroU32;
+
 // Received a ton of help from: https://sotrh.github.io/learn-wgpu/beginner/tutorial2-surface/#first-some-housekeeping-state
-use wgpu::Instance;
+use wgpu::{Instance, util::DeviceExt};
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -8,6 +10,42 @@ use winit::{
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+    position:[f32;3],
+    color:[f32;3]
+}
+
+// define triangles that fill the screen
+// to accomodate this setup in the render pipeline config settings, the topology is set to "strip"
+const VERTICES:&[Vertex] = &[
+    Vertex{position: [ 1.0,  1.0, 0.0], color: [1.0, 0.0, 0.0]},
+    Vertex{position: [-1.0,  1.0, 0.0], color: [0.0, 0.0, 0.0]},
+    Vertex{position: [ 1.0, -1.0, 0.0], color: [1.0, 1.0, 0.0]},
+    Vertex{position: [-1.0, -1.0, 0.0], color: [0.0, 1.0, 0.0]},
+];
+
+// data passed to the GPU about the state of the cursor
+struct CursorState {
+    pressed:bool,
+    position:[f64;2],
+}
+impl CursorState {
+    fn new() -> Self {
+        let pressed = false;
+        let position = [0.0,0.0];
+
+        Self {
+            pressed,
+            position,
+        }
+    }
+    fn get_pos_f32 (&self) -> [f32; 4] { // vec4 is the min size of a uniform buff
+        [self.position[0] as f32, self.position[1] as f32, 0.0, 0.0]
+    }
+}
 
 struct State {
     surface: wgpu::Surface,
@@ -18,6 +56,9 @@ struct State {
     size: winit::dpi::PhysicalSize<u32>,
     window: Window,
     render_pipeline: wgpu::RenderPipeline,
+    cursor_pos_buffer: wgpu::Buffer,
+    cursor_pos_bind_group: wgpu::BindGroup,
+    vertex_buffer: wgpu::Buffer,
 }
 impl State {
     async fn new(window: Window) -> Self {
@@ -78,11 +119,97 @@ impl State {
         // I instead use include_wgsl! which creates a ShaderModuleDescriptor from the file that you supply
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 
+        
+        // !! BUFFER STUFF !!
+
+        // Vertex Buffer
+        let vertex_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
+
+        // Create Vertex Buffer Layout
+        // From: https://sotrh.github.io/learn-wgpu/beginner/tutorial4-buffer/#so-what-do-i-do-with-it
+        //      We need to tell the render_pipeline to use this buffer when we are drawing, but first, we need to 
+        //  tell the render_pipeline how to read the buffer. We do this using VertexBufferLayouts and the 
+        //  vertex_buffers field that I promised we'd talk about when we created the render_pipeline.
+        //      A VertexBufferLayout defines how a buffer is represented in memory. Without this, the 
+        //  render_pipeline has no idea how to map the buffer in the shader. Here's what the descriptor for a 
+        //  buffer full of Vertex would look like.
+        // If we wanna get sophistacated with it, we can returnb this layout description in a implementation
+        //  of the Vertex struct. Not too worried about it right now though
+        let vertex_buffer_layout = wgpu::VertexBufferLayout {
+            // byte length of vertex data, so array can be stepped through in linear memory
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress, 
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                // put the position data in the first location of the vert buffer
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x3, // matches format defined in Vertex struct
+                },
+                // put the color data in the second location in the vert buffer
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress, // step past postion data to get color
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x3,
+                }
+            ]
+        };
+
+        // placeholder for mouse position
+        // TODO: look into making this a struct with x and y components instead? good challenge!
+        let cursor_state:CursorState = CursorState::new();
+
+        // create a uniform buffer for the mouse location
+        let cursor_pos_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor{
+                label: Some("Cursor Position Buffer"),
+                contents: bytemuck::cast_slice(&[cursor_state.get_pos_f32()]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+
+        // TODO: move stuff into diff functions so this is easier to read
+        
+        // create bind group LAYOUT with this buffer
+        let cursor_pos_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            ],
+            label: Some("cursor_pos_bind_group_layout"),
+        });
+
+        // create ACTUAL bind group FROM LAYOUT and BUFFER that we just made
+        let cursor_pos_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &cursor_pos_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: cursor_pos_buffer.as_entire_binding(),
+                }
+            ],
+            label: Some("cursor_pos_bind_group"),
+        });
+
         // create proper pipeline layout (declares buffers and such, look into this more)
+        // use the LAYOUT we created
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Basic Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&cursor_pos_bind_group_layout],
                 push_constant_ranges: &[], // ???
             });
         
@@ -94,7 +221,7 @@ impl State {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: "vert_main",
-                    buffers: &[],
+                    buffers: &[vertex_buffer_layout],
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
@@ -106,7 +233,7 @@ impl State {
                     })],
                 }),
                 primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList, // every three verts forms a triangle
+                    topology: wgpu::PrimitiveTopology::TriangleStrip, // every three verts forms a triangle
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Ccw, // counter-clockwise is the direction tris are drawn
                     cull_mode: Some(wgpu::Face::Back), // if the triangle is facing away, do not draw it
@@ -135,6 +262,9 @@ impl State {
             size,
             window,
             render_pipeline,
+            cursor_pos_buffer,
+            cursor_pos_bind_group,
+            vertex_buffer
         }
     }
 
@@ -156,10 +286,15 @@ impl State {
         // by another process
         match event {
             WindowEvent::CursorMoved{ position,.. } => {
+                // change load color (default background color)
                 log::info!("Movement is Registering");
-                let redval = position.x / self.size.width as f64;
-                let greenval = position.y / self.size.height as f64;
+                let redval = ((position.x + f64::MIN_POSITIVE) / self.size.width as f64) % 1.0;
+                let greenval = ((position.y + f64::MIN_POSITIVE) / self.size.height as f64) % 1.0;
                 self.load_color = wgpu::Color { r: redval, g:greenval, b:1.0, a:1.0 };
+
+                // write the new mouse position to buffer
+                self.queue.write_buffer(&self.cursor_pos_buffer, 0, bytemuck::cast_slice(&[[position.x as f32, position.y as f32]]));
+
                 true
             },
             _ => false
@@ -207,9 +342,16 @@ impl State {
                 depth_stencil_attachment: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline); 
-            //draw something with 3 vertices, and 1 instance. This is where @builtin(vertex_index) comes from in the vert shader wgsl code
-            render_pass.draw(0..3, 0..1); // remember range is not max inclusive
+            render_pass.set_pipeline(&self.render_pipeline);
+
+            // Designate a vertex buffer
+            // The reason "slice" is used is because we can store many objects in a single vertex buffer
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+
+            render_pass.set_bind_group(0, &self.cursor_pos_bind_group, &[]);
+
+            //draw something with 4 vertices, and 1 instance. This is where @builtin(vertex_index) comes from in the vert shader wgsl code
+            render_pass.draw(0..VERTICES.len() as u32, 0..1); // remember range is not max inclusive
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
