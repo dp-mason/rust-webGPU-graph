@@ -6,8 +6,6 @@ struct VertexOutput {
     @location(0) color:vec3<f32> // TODO: are we overwriting the vert buffer ??
 };
 
-
-
 @vertex
 fn vert_main(
     @builtin(vertex_index) curr_vert_index:u32, // we can use these because they are buffers defined and written to in the configuration of the vert buffers
@@ -26,10 +24,10 @@ fn vert_main(
 @fragment
 fn frag_main(vert_data: VertexOutput) -> @location(0) vec4<f32> {
     // return this arbitrary color,
-    var dist = length(vec4<f32>(vert_data.color[0], vert_data.color[1], 0.0, 0.0) - cursor_pos);
-    if dist < 0.2 {
-        return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+    var dist = length(vec4<f32>(vert_data.color, 0.0) - cursor_pos);
+    if dist < 0.1 {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); 
     } else {
-        return vec4<f32>(vert_data.color, 1.0);
+        return vec4<f32>(vert_data.color, 1.0); // transparent, show the bg color
     }
 }

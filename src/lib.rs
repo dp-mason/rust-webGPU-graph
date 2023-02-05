@@ -35,7 +35,8 @@ struct CursorState {
 impl CursorState {
     fn new() -> Self {
         let pressed = false;
-        let position = [0.0,0.0];
+        // pixel position of cursor in the window, must be normalized for window size to get 0..1 position 
+        let position = [0.0, 0.0]; 
 
         Self {
             pressed,
@@ -287,13 +288,18 @@ impl State {
         match event {
             WindowEvent::CursorMoved{ position,.. } => {
                 // change load color (default background color)
-                log::info!("Movement is Registering");
                 let redval = ((position.x + f64::MIN_POSITIVE) / self.size.width as f64) % 1.0;
                 let greenval = ((position.y + f64::MIN_POSITIVE) / self.size.height as f64) % 1.0;
                 self.load_color = wgpu::Color { r: redval, g:greenval, b:1.0, a:1.0 };
 
                 // write the new mouse position to buffer
-                self.queue.write_buffer(&self.cursor_pos_buffer, 0, bytemuck::cast_slice(&[[position.x as f32, position.y as f32]]));
+                self.queue.write_buffer(
+                    &self.cursor_pos_buffer, 
+                    0, 
+                    bytemuck::cast_slice(&[[
+                        position.x as f32 / self.size.width as f32, 
+                        position.y as f32 / self.size.height as f32,
+                    ]]));
 
                 true
             },
@@ -405,7 +411,6 @@ pub async fn run() {
             } if window_id == state.window().id() => {
                 log::info!("event occurred for this window: {:?}\n", event);
                 if !state.input(event) {
-                    log::info!("checking input\n");
                     // UPDATED!
                     match event {
                         WindowEvent::CloseRequested
