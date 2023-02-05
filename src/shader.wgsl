@@ -3,7 +3,7 @@
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>, // TODO: remind yourself exactly what clip space is
-    @location(0) color:vec3<f32> // TODO: are we overwriting the vert buffer ??
+    @location(0) color:vec3<f32> // TODO: are we overwriting the vert buffer (position part that is at loc 0) ??
 };
 
 @vertex
@@ -20,12 +20,12 @@ fn vert_main(
 
 @group(0) @binding(0) var<uniform> cursor_pos: vec4<f32>;
 
-// In combo with the vert shader, creates triangle of arbitrary returned
+// Puts a red circle around the cursor, rest of the plane is the color of the UV position of the fragment
 @fragment
 fn frag_main(vert_data: VertexOutput) -> @location(0) vec4<f32> {
     // return this arbitrary color,
     var dist = length(vec4<f32>(vert_data.color, 0.0) - cursor_pos);
-    if dist < 0.1 {
+    if dist < 0.01 {
         return vec4<f32>(1.0, 0.0, 0.0, 1.0); 
     } else {
         return vec4<f32>(vert_data.color, 1.0); // transparent, show the bg color
