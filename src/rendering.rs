@@ -20,32 +20,18 @@ struct Vertex {
 // define triangles that fill the screen
 // to accomodate this setup in the render pipeline config settings, the topology is set to "strip"
 const VERTICES:&[Vertex] = &[
-    Vertex{position: [ 1.0,  1.0, 0.0], color: [1.0, 0.0, 0.0]},
-    Vertex{position: [-1.0,  1.0, 0.0], color: [0.0, 0.0, 0.0]},
-    Vertex{position: [ 1.0, -1.0, 0.0], color: [1.0, 1.0, 0.0]},
-    Vertex{position: [-1.0, -1.0, 0.0], color: [0.0, 1.0, 0.0]},
+    // background
+    Vertex{position: [ 1.0,  1.0, 1.0], color: [1.0, 0.0, 0.0]},
+    Vertex{position: [-1.0,  1.0, 1.0], color: [0.0, 0.0, 0.0]},
+    Vertex{position: [ 1.0, -1.0, 1.0], color: [1.0, 1.0, 0.0]},
+    Vertex{position: [-1.0, -1.0, 1.0], color: [0.0, 1.0, 0.0]},
+
+    // button
+    Vertex{position: [ 0.1,  0.1, 1.0], color: [0.0, 1.0, 0.0]},
+    Vertex{position: [-0.1,  0.1, 1.0], color: [0.0, 1.0, 0.0]},
+    Vertex{position: [ 0.1, -0.1, 1.0], color: [0.0, 1.0, 0.0]},
+    Vertex{position: [-0.1, -0.1, 1.0], color: [0.0, 1.0, 0.0]},
 ];
-
-// data passed to the GPU about the state of the cursor
-pub struct CursorState {
-    pressed:bool,
-    position:[f64;2],
-}
-impl CursorState {
-    fn new() -> Self {
-        let pressed = false;
-        // pixel position of cursor in the window, must be normalized for window size to get 0..1 position 
-        let position = [0.0, 0.0]; 
-
-        Self {
-            pressed,
-            position,
-        }
-    }
-    fn get_pos_f32 (&self) -> [f32; 4] { // vec4 is the min size of a uniform buff
-        [self.position[0] as f32, self.position[1] as f32, 0.0, 0.0]
-    }
-}
 
 pub struct State {
     surface: wgpu::Surface,
@@ -56,8 +42,11 @@ pub struct State {
     size: winit::dpi::PhysicalSize<u32>,
     window: Window,
     render_pipeline: wgpu::RenderPipeline,
+
     cursor_pos_buffer: wgpu::Buffer,
     cursor_pos_bind_group: wgpu::BindGroup,
+
+    //TODO: vertices_list: [Vertex],
     vertex_buffer: wgpu::Buffer,
 }
 impl State {
@@ -161,15 +150,13 @@ impl State {
             ]
         };
 
-        // placeholder for mouse position
-        // TODO: look into making this a struct with x and y components instead? good challenge!
-        let cursor_state:CursorState = CursorState::new();
-
-        // create a uniform buffer for the mouse location
+        let init_cursor_position:[f32;4] = [-1.0, 1.0, 0.0, 1.0]; //
+        // create uniform buffer for the cursor position
+        
         let cursor_pos_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor{
                 label: Some("Cursor Position Buffer"),
-                contents: bytemuck::cast_slice(&[cursor_state.get_pos_f32()]),
+                contents: bytemuck::cast_slice(&init_cursor_position),
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
 
@@ -187,9 +174,9 @@ impl State {
                         min_binding_size: None,
                     },
                     count: None,
-                }
+                },
             ],
-            label: Some("cursor_pos_bind_group_layout"),
+            label: Some("cursor_state_bind_group_layout"),
         });
 
         // create ACTUAL bind group FROM LAYOUT and BUFFER that we just made
@@ -199,7 +186,7 @@ impl State {
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: cursor_pos_buffer.as_entire_binding(),
-                }
+                },
             ],
             label: Some("cursor_pos_bind_group"),
         });
@@ -292,17 +279,24 @@ impl State {
                 let greenval = ((position.y + f64::MIN_POSITIVE) / self.size.height as f64) % 1.0;
                 self.load_color = wgpu::Color { r: redval, g:greenval, b:1.0, a:1.0 };
 
-                // write the new mouse position to buffer
+                // write the new cursor pos to buffer
                 self.queue.write_buffer(
                     &self.cursor_pos_buffer, 
                     0, 
                     bytemuck::cast_slice(&[[
-                        position.x as f32 / self.size.width as f32, 
-                        position.y as f32 / self.size.height as f32,
+                        [position.x as f32, position.y as f32, 0.0, 1.0]
                     ]]));
-
+                
                 true
             },
+            // WindowEvent::MouseInput { state, .. } => {
+            //     match state {
+            //         ElementState::Pressed => {/* TODO */},
+            //         ElementState::Released => {/* TODO */}
+            //     }
+
+            //     true
+            // },
             _ => false
         }
     }

@@ -13,6 +13,9 @@ log = "0.4"
 wgpu = "0.14"
 pollster = "0.2" # block on async functions
 bytemuck = { version = "1.12", features = [ "derive" ] }
+# citegraph dependencies
+scraper = { version = "0.14.0" }
+regex = { version = "1.7.1" }
 
 # the other regular dependencies...
 [target.'cfg(target_arch = "wasm32")'.dependencies]

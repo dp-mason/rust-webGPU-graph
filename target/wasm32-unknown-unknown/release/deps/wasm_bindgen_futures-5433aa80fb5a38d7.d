@@ -1,0 +1,9 @@
+/Users/cloudemployee/Desktop/rust/rust-webGPU-graph/target/wasm32-unknown-unknown/release/deps/wasm_bindgen_futures-5433aa80fb5a38d7.rmeta: /Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/lib.rs /Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/queue.rs /Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/task/singlethread.rs
+
+/Users/cloudemployee/Desktop/rust/rust-webGPU-graph/target/wasm32-unknown-unknown/release/deps/libwasm_bindgen_futures-5433aa80fb5a38d7.rlib: /Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/lib.rs /Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/queue.rs /Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/task/singlethread.rs
+
+/Users/cloudemployee/Desktop/rust/rust-webGPU-graph/target/wasm32-unknown-unknown/release/deps/wasm_bindgen_futures-5433aa80fb5a38d7.d: /Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/lib.rs /Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/queue.rs /Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/task/singlethread.rs
+
+/Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/lib.rs:
+/Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/queue.rs:
+/Users/cloudemployee/.cargo/registry/src/github.com-1ecc6299db9ec823/wasm-bindgen-futures-0.4.33/src/task/singlethread.rs:
