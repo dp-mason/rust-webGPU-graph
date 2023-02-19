@@ -5,18 +5,21 @@ struct VertexOutput {
     @location(0) color:vec3<f32> // TODO: are we overwriting the vert buffer (position part that is at loc 0) ??
 };
 
+
 // Vertex Shader
 // @location(0) is the position of the vert in clip space, written to the vertex buffer in rendering.rs
 // @location(1) is the color that we assigned to this vert and wrote to the vertex buffer
 @vertex
 fn vert_main(
     @builtin(vertex_index) vert_index:u32, // we can use these because they are buffers defined and written to in the configuration of the vert buffers
+    @builtin(instance_index) inst_index:u32,
     @location(0) clip_position:vec3<f32>, 
-    @location(1) color:vec3<f32>
+    @location(1) color:vec3<f32>,
+    @location(2) instance_pos:vec2<f32>,
 ) -> VertexOutput {
     var return_data:VertexOutput;
     // write some data to the vertex's position attribute, THIS VALUE WILL BE CHANGED INBETWEEN THE VERT AND FRAG SHADERS
-    return_data.position = vec4<f32>(clip_position, 1.0);
+    return_data.position = vec4<f32>(clip_position[0] + instance_pos[0], clip_position[1] + instance_pos[1], 1.0, 1.0);
     return_data.color = color;
     return return_data;
 }

@@ -17,20 +17,85 @@ struct Vertex {
     color:[f32;3]
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct CircleInstance {
+    position:[f32;2],
+}
+impl CircleInstance {
+    // returns a vertex buffer layout used for storing this data type in a Vertex Buffer
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+        wgpu::VertexBufferLayout{
+            array_stride: std::mem::size_of::<CircleInstance>() as wgpu::BufferAddress,
+            // We need to switch from using a step mode of Vertex to Instance
+            // This means that our shaders will only change to use the next
+            // instance when the shader starts processing a new instance
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                wgpu::VertexAttribute{
+                    offset:0,
+                    shader_location:2,
+                    format:wgpu::VertexFormat::Float32x2,
+                }
+            ]
+        }
+    }
+}
+
+// TODO: move this to a "shapes" module
 // define triangles that fill the screen
 // to accomodate this setup in the render pipeline config settings, the topology is set to "strip"
 const VERTICES:&[Vertex] = &[
-    // background
-    Vertex{position: [ 1.0,  1.0, 1.0], color: [1.0, 0.0, 0.0]},
-    Vertex{position: [-1.0,  1.0, 1.0], color: [0.0, 0.0, 0.0]},
-    Vertex{position: [ 1.0, -1.0, 1.0], color: [1.0, 1.0, 0.0]},
-    Vertex{position: [-1.0, -1.0, 1.0], color: [0.0, 1.0, 0.0]},
+    // background 
+    Vertex{position: [ 1.0,  1.0, 1.0], color: [1.0, 0.0, 0.0]}, // top right
+    Vertex{position: [-1.0,  1.0, 1.0], color: [0.0, 0.0, 0.0]}, // top left
+    Vertex{position: [ 1.0, -1.0, 1.0], color: [1.0, 1.0, 0.0]}, // bottom right
+    Vertex{position: [-1.0, -1.0, 1.0], color: [0.0, 1.0, 0.0]}, // bottom left
 
-    // button
-    Vertex{position: [ 0.1,  0.1, 1.0], color: [0.0, 1.0, 0.0]},
-    Vertex{position: [-0.1,  0.1, 1.0], color: [0.0, 1.0, 0.0]},
-    Vertex{position: [ 0.1, -0.1, 1.0], color: [0.0, 1.0, 0.0]},
-    Vertex{position: [-0.1, -0.1, 1.0], color: [0.0, 1.0, 0.0]},
+    // Circle
+    Vertex{ position: [ 0.000000, -1.000000, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [-0.382683, -0.923880, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [-0.707107, -0.707107, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [-0.923880, -0.382683, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [-1.000000,  0.000000, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [-0.923880,  0.382683, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [-0.707107,  0.707107, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [-0.382683,  0.923880, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [ 0.000000,  1.000000, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [ 0.382683,  0.923880, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [ 0.707107,  0.707107, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [ 0.923880,  0.382684, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [ 1.000000, -0.000000, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [ 0.923879, -0.382684, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [ 0.707107, -0.707107, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [ 0.382683, -0.923880, 0.5], color: [1.0, 0.0, 1.0] },
+    Vertex{ position: [-0.000000, -0.000000, 0.5], color: [1.0, 0.0, 1.0] },
+];
+
+const CIRCLE_START_OFFSET:u16 = 3; // would be four, but wavefront obj format starts indexing from one for some reason
+
+const TRI_INDEX_BUFFER:&[u16] = &[
+    // Background Triangles
+    2, 0, 1,
+    2, 1, 3,
+    
+    // Circle
+     1 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET,  2 + CIRCLE_START_OFFSET,
+     2 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET,  3 + CIRCLE_START_OFFSET,
+     3 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET,  4 + CIRCLE_START_OFFSET,
+     4 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET,  5 + CIRCLE_START_OFFSET,
+     5 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET,  6 + CIRCLE_START_OFFSET,
+     6 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET,  7 + CIRCLE_START_OFFSET,
+     7 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET,  8 + CIRCLE_START_OFFSET,
+     8 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET,  9 + CIRCLE_START_OFFSET,
+     9 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET, 10 + CIRCLE_START_OFFSET,
+    10 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET, 11 + CIRCLE_START_OFFSET,
+    11 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET, 12 + CIRCLE_START_OFFSET,
+    12 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET, 13 + CIRCLE_START_OFFSET,
+    13 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET, 14 + CIRCLE_START_OFFSET,
+    14 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET, 15 + CIRCLE_START_OFFSET,
+    15 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET, 16 + CIRCLE_START_OFFSET,
+    16 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET,  1 + CIRCLE_START_OFFSET,
 ];
 
 pub struct State {
@@ -46,8 +111,12 @@ pub struct State {
     cursor_pos_buffer: wgpu::Buffer,
     cursor_pos_bind_group: wgpu::BindGroup,
 
-    //TODO: vertices_list: [Vertex],
     vertex_buffer: wgpu::Buffer,
+    tri_index_buffer: wgpu::Buffer,
+    num_tri_indices: u32,
+
+    circle_instances: Vec<CircleInstance>,
+    circle_instances_buffer: wgpu::Buffer,
 }
 impl State {
     pub async fn new(window: Window) -> Self {
@@ -119,6 +188,29 @@ impl State {
                 usage: wgpu::BufferUsages::VERTEX,
             }
         );
+        // Triangle Index Buffer
+        let tri_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(TRI_INDEX_BUFFER),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let num_tri_indices = TRI_INDEX_BUFFER.len() as u32;
+
+        let circle_instances = [
+            CircleInstance {
+                position:[0.0, 0.0]
+            },
+            CircleInstance {
+                position:[0.0, 1.0]
+            }
+        ];
+        let circle_instances_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Object Instance Buffer"),
+                contents: bytemuck::cast_slice(&circle_instances),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
 
         // Create Vertex Buffer Layout
         // From: https://sotrh.github.io/learn-wgpu/beginner/tutorial4-buffer/#so-what-do-i-do-with-it
@@ -150,9 +242,9 @@ impl State {
             ]
         };
 
-        let init_cursor_position:[f32;4] = [-1.0, 1.0, 0.0, 1.0]; //
-        // create uniform buffer for the cursor position
+        let init_cursor_position:[f32;4] = [-1.0, 1.0, 0.0, 1.0];
         
+        // create uniform buffer for the cursor position
         let cursor_pos_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor{
                 label: Some("Cursor Position Buffer"),
@@ -208,7 +300,7 @@ impl State {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: "vert_main",
-                    buffers: &[vertex_buffer_layout],
+                    buffers: &[vertex_buffer_layout, CircleInstance::desc()],
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
@@ -220,7 +312,7 @@ impl State {
                     })],
                 }),
                 primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleStrip, // every three verts forms a triangle
+                    topology: wgpu::PrimitiveTopology::TriangleList, // every three verts forms a triangle
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Ccw, // counter-clockwise is the direction tris are drawn
                     cull_mode: Some(wgpu::Face::Back), // if the triangle is facing away, do not draw it
@@ -251,7 +343,11 @@ impl State {
             render_pipeline,
             cursor_pos_buffer,
             cursor_pos_bind_group,
-            vertex_buffer
+            vertex_buffer,
+            tri_index_buffer,
+            num_tri_indices,
+            circle_instances:circle_instances.to_vec(),
+            circle_instances_buffer
         }
     }
 
@@ -383,11 +479,15 @@ impl State {
             // Designate a vertex buffer
             // The reason "slice" is used is because we can store many objects in a single vertex buffer
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.circle_instances_buffer.slice(..)); // set the instance buffer
+            render_pass.set_index_buffer(self.tri_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
             render_pass.set_bind_group(0, &self.cursor_pos_bind_group, &[]);
 
-            //draw something with 4 vertices, and 1 instance. This is where @builtin(vertex_index) comes from in the vert shader wgsl code
-            render_pass.draw(0..VERTICES.len() as u32, 0..1); // remember range is not max inclusive
+            // draw something with 4 vertices, and 1 instance. This is where @builtin(vertex_index) comes from in the vert shader wgsl code
+            // TODO: use "draw_indexed()" instead if you want to draw
+            render_pass.draw_indexed(0..6, 0, 0..1); // draw background, remember range is not max inclusive
+            render_pass.draw_indexed(6..self.num_tri_indices, 0, 0..self.circle_instances.len() as u32); // draw circles
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
