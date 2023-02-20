@@ -108,6 +108,7 @@ pub struct State {
     window: Window,
     render_pipeline: wgpu::RenderPipeline,
 
+    cursor_pos:[f32;2],
     cursor_pos_buffer: wgpu::Buffer,
     cursor_pos_bind_group: wgpu::BindGroup,
 
@@ -206,7 +207,7 @@ impl State {
         ];
         let circle_instances_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
-                label: Some("Object Instance Buffer"),
+                label: Some("Circle Instance Buffer"),
                 contents: bytemuck::cast_slice(&circle_instances),
                 usage: wgpu::BufferUsages::VERTEX,
             }
@@ -242,13 +243,13 @@ impl State {
             ]
         };
 
-        let init_cursor_position:[f32;4] = [-1.0, 1.0, 0.0, 1.0];
+        let cursor_pos:[f32;4] = [-1.0, 1.0, 0.0, 1.0];
         
         // create uniform buffer for the cursor position
         let cursor_pos_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor{
                 label: Some("Cursor Position Buffer"),
-                contents: bytemuck::cast_slice(&init_cursor_position),
+                contents: bytemuck::cast_slice(&cursor_pos),
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
 
@@ -341,6 +342,7 @@ impl State {
             size,
             window,
             render_pipeline,
+            cursor_pos:[0.0, 0.0],
             cursor_pos_buffer,
             cursor_pos_bind_group,
             vertex_buffer,
@@ -349,6 +351,24 @@ impl State {
             circle_instances:circle_instances.to_vec(),
             circle_instances_buffer
         }
+    }
+
+    pub fn add_circle_instance(&mut self, clip_position:[f32;2]) {
+        self.circle_instances.push(CircleInstance {
+            position:clip_position,
+        });
+        
+        log::warn!("Content of instances is: {:?}",self.circle_instances);
+        // Write the entire instances buffer again to new buffer 
+        // TODO: this is bad, use offset instead if there is extra capacity, reset the buff once it has reach capacity
+        //self.cursor_pos_buffer.unmap();
+        self.circle_instances_buffer = self.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Circle Instance Buffer, Grown"),
+                contents: bytemuck::cast_slice(&self.circle_instances.as_slice()),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
     }
 
     pub fn window(&self) -> &Window {
@@ -363,6 +383,7 @@ impl State {
             self.surface.configure(&self.device, &self.config);
         }
     }
+
     // this is where more user input for rendering can be added
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         // match to some input events you want to handle
@@ -375,24 +396,29 @@ impl State {
                 let greenval = ((position.y + f64::MIN_POSITIVE) / self.size.height as f64) % 1.0;
                 self.load_color = wgpu::Color { r: redval, g:greenval, b:1.0, a:1.0 };
 
+                self.cursor_pos = [position.x as f32, position.y as f32];
                 // write the new cursor pos to buffer
                 self.queue.write_buffer(
                     &self.cursor_pos_buffer, 
                     0, 
                     bytemuck::cast_slice(&[[
-                        [position.x as f32, position.y as f32, 0.0, 1.0]
+                        [self.cursor_pos[0], self.cursor_pos[1], 0.0, 1.0]
                     ]]));
                 
                 true
             },
-            // WindowEvent::MouseInput { state, .. } => {
-            //     match state {
-            //         ElementState::Pressed => {/* TODO */},
-            //         ElementState::Released => {/* TODO */}
-            //     }
+            WindowEvent::MouseInput { state, .. } => {
+                match state {
+                    ElementState::Pressed => {
+                        let cursor_clip_x = ((self.cursor_pos[0] / self.size.width as f32 ) - 0.5) * 2.0;
+                        let cursor_clip_y = ((self.cursor_pos[1] / self.size.height as f32) - 0.5) * -2.0;
+                        self.add_circle_instance([cursor_clip_x, cursor_clip_y]);
+                    },
+                    ElementState::Released => {/* TODO */}
+                }
 
-            //     true
-            // },
+                true
+            },
             _ => false
         }
     }
