@@ -5,6 +5,12 @@ struct VertexOutput {
     @location(0) color:vec3<f32> // TODO: are we overwriting the vert buffer (position part that is at loc 0) ??
 };
 
+struct GraphicsInput {
+    cursor_pos:vec4<f32>,
+    aspect_ratio:vec4<f32>
+}
+@group(0) @binding(0) var<uniform> graphics_input: GraphicsInput;
+
 
 // Vertex Shader
 // @location(0) is the position of the vert in clip space, written to the vertex buffer in rendering.rs
@@ -19,12 +25,22 @@ fn vert_main(
 ) -> VertexOutput {
     var return_data:VertexOutput;
     // write some data to the vertex's position attribute, THIS VALUE WILL BE CHANGED INBETWEEN THE VERT AND FRAG SHADERS
-    return_data.position = vec4<f32>(clip_position[0] + instance_pos[0], clip_position[1] + instance_pos[1], 1.0, 1.0);
-    return_data.color = color;
+    if(vert_index < 4u){
+        // the vert shader for the background
+        return_data.position = vec4<f32>(clip_position, 1.0);
+        return_data.color = vec3<f32>(color[0], color[1], 0.0);
+    }
+    else {
+        // the vert shader for the circle instances
+        let scale:f32 = 0.1;
+        return_data.position = vec4<f32>(clip_position[0] * scale * graphics_input.aspect_ratio[0] + instance_pos[0], clip_position[1] * scale + instance_pos[1], 0.2, 1.0) ;
+        return_data.color = vec3(0.0, 1.0, 0.0);
+
+    }
     return return_data;
 }
 
-@group(0) @binding(0) var<uniform> cursor_pos: vec4<f32>;
+
 
 // Puts a red circle around the cursor, rest of the plane is the color of the UV position of the fragment
 @fragment
@@ -34,7 +50,8 @@ fn frag_main(
     // We assigned a clip space postion to the @builtin position attribute before, but now it has been transformed
     // into the framebuffer coordinate position of this fragment. This happened INBETWEEN vert and frag stages
     // whereas the color will be a direct interpolation of the value we assigned in the vert shader
-    var diff_vec = vert_data.position - cursor_pos;
+    
+    var diff_vec = vert_data.position - graphics_input.cursor_pos;
     var cull = diff_vec[0] > 50.0 || diff_vec[1] > 50.0;
     if cull == false {
         var dist = length(diff_vec);

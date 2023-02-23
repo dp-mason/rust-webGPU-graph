@@ -1,6 +1,6 @@
 
 // Received a ton of help from: https://sotrh.github.io/learn-wgpu/beginner/tutorial2-surface/#first-some-housekeeping-state
-use wgpu::{Instance, util::DeviceExt};
+use wgpu::{Instance, util::DeviceExt, DynamicOffset};
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -15,6 +15,13 @@ use wasm_bindgen::prelude::*;
 struct Vertex {
     position:[f32;3],
     color:[f32;3]
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct GraphicsInput {
+    cursor_position:[f32;4],
+    aspect_ratio:[f32;4],
 }
 
 #[repr(C)]
@@ -109,9 +116,12 @@ pub struct State {
     render_pipeline: wgpu::RenderPipeline,
 
     cursor_pos:[f32;2],
-    cursor_pos_buffer: wgpu::Buffer,
-    cursor_pos_bind_group: wgpu::BindGroup,
-
+    aspect_ratio:f32,
+    
+    cursor_pos_ar_buffer: wgpu::Buffer,
+    
+    uniform_bind_group: wgpu::BindGroup,
+    
     vertex_buffer: wgpu::Buffer,
     tri_index_buffer: wgpu::Buffer,
     num_tri_indices: u32,
@@ -201,9 +211,9 @@ impl State {
             CircleInstance {
                 position:[0.0, 0.0]
             },
-            CircleInstance {
-                position:[0.0, 1.0]
-            }
+            // CircleInstance {
+            //     position:[0.0, 1.0]
+            // }
         ];
         let circle_instances_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
@@ -244,23 +254,30 @@ impl State {
         };
 
         let cursor_pos:[f32;4] = [-1.0, 1.0, 0.0, 1.0];
+        let aspect_ratio:[f32;4] = [size.height as f32 / size.width as f32, 0.0, 0.0, 0.0];
+
+        let graphics_input = GraphicsInput {
+            cursor_position:cursor_pos,
+            aspect_ratio:aspect_ratio,
+        };
+        
+        log::warn!("Aspect ratio: {}", aspect_ratio[0]);
         
         // create uniform buffer for the cursor position
-        let cursor_pos_buffer = device.create_buffer_init(
+        let cursor_pos_ar_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor{
-                label: Some("Cursor Position Buffer"),
-                contents: bytemuck::cast_slice(&cursor_pos),
+                label: Some("Cursor Position and Aspect Ratio Buffer"),
+                contents: bytemuck::cast_slice(&[graphics_input]),
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
-
-        // TODO: move stuff into diff functions so this is easier to read
         
+                
         // create bind group LAYOUT with this buffer
-        let cursor_pos_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -269,19 +286,19 @@ impl State {
                     count: None,
                 },
             ],
-            label: Some("cursor_state_bind_group_layout"),
+            label: Some("uniform_bind_group_layout"),
         });
 
         // create ACTUAL bind group FROM LAYOUT and BUFFER that we just made
-        let cursor_pos_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &cursor_pos_bind_group_layout,
+        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &uniform_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: cursor_pos_buffer.as_entire_binding(),
+                    resource: cursor_pos_ar_buffer.as_entire_binding(),
                 },
             ],
-            label: Some("cursor_pos_bind_group"),
+            label: Some("uniform_bind_group"),
         });
 
         // create proper pipeline layout (declares buffers and such, look into this more)
@@ -289,7 +306,7 @@ impl State {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Basic Pipeline Layout"),
-                bind_group_layouts: &[&cursor_pos_bind_group_layout],
+                bind_group_layouts: &[&uniform_bind_group_layout],
                 push_constant_ranges: &[], // ???
             });
         
@@ -342,12 +359,18 @@ impl State {
             size,
             window,
             render_pipeline,
+
+            aspect_ratio:aspect_ratio[0],
+
             cursor_pos:[0.0, 0.0],
-            cursor_pos_buffer,
-            cursor_pos_bind_group,
+            cursor_pos_ar_buffer,
+            
+            uniform_bind_group,
+
             vertex_buffer,
             tri_index_buffer,
             num_tri_indices,
+
             circle_instances:circle_instances.to_vec(),
             circle_instances_buffer
         }
@@ -382,6 +405,8 @@ impl State {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
         }
+
+        // TODO: write new aspect ratio to graphics_input buffer in state
     }
 
     // this is where more user input for rendering can be added
@@ -399,10 +424,10 @@ impl State {
                 self.cursor_pos = [position.x as f32, position.y as f32];
                 // write the new cursor pos to buffer
                 self.queue.write_buffer(
-                    &self.cursor_pos_buffer, 
+                    &self.cursor_pos_ar_buffer, 
                     0, 
                     bytemuck::cast_slice(&[[
-                        [self.cursor_pos[0], self.cursor_pos[1], 0.0, 1.0]
+                        [self.cursor_pos[0], self.cursor_pos[1], 0.0f32, 1.0f32]
                     ]]));
                 
                 true
@@ -445,7 +470,7 @@ impl State {
             // Winit prevents sizing with CSS, so we have to set
             // the size manually when on web.
             use winit::dpi::PhysicalSize;
-            window.set_inner_size(PhysicalSize::new(1024, 1024));
+            window.set_inner_size(PhysicalSize::new(1800, 1024));
     
             use winit::platform::web::WindowExtWebSys;
             web_sys::window()
@@ -508,7 +533,7 @@ impl State {
             render_pass.set_vertex_buffer(1, self.circle_instances_buffer.slice(..)); // set the instance buffer
             render_pass.set_index_buffer(self.tri_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-            render_pass.set_bind_group(0, &self.cursor_pos_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
 
             // draw something with 4 vertices, and 1 instance. This is where @builtin(vertex_index) comes from in the vert shader wgsl code
             // TODO: use "draw_indexed()" instead if you want to draw
