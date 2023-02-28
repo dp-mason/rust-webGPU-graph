@@ -113,6 +113,7 @@ pub struct State {
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     window: Window,
+
     render_pipeline: wgpu::RenderPipeline,
 
     cursor_pos:[f32;2],
@@ -199,6 +200,7 @@ impl State {
                 usage: wgpu::BufferUsages::VERTEX,
             }
         );
+
         // Triangle Index Buffer
         let tri_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
@@ -260,9 +262,7 @@ impl State {
             cursor_position:cursor_pos,
             aspect_ratio:aspect_ratio,
         };
-        
-        log::warn!("Aspect ratio: {}", aspect_ratio[0]);
-        
+
         // create uniform buffer for the cursor position
         let cursor_pos_ar_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor{
@@ -270,7 +270,6 @@ impl State {
                 contents: bytemuck::cast_slice(&[graphics_input]),
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
-        
                 
         // create bind group LAYOUT with this buffer
         let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -358,6 +357,7 @@ impl State {
             config,
             size,
             window,
+            
             render_pipeline,
 
             aspect_ratio:aspect_ratio[0],
@@ -392,6 +392,26 @@ impl State {
                 usage: wgpu::BufferUsages::VERTEX,
             }
         );
+    }
+
+    // takes a position in clip space (usually the mouse location) and returns the index of the circle instance
+    // that exists there if one exists
+    // todo: move this to a compute shader once you figure out how that works
+    pub fn circle_at_location(&self, position:[f32; 2]) -> Option<usize> {
+        let mut index = 0;
+        for circle in &self.circle_instances {
+            // calculate vector between origin of this circle instance ond passed position
+            let diff_vector = [circle.position[0] - position[0], circle.position[1] - position[1]];
+            // helps rule out circles before doing proper distance calculation
+            if !(diff_vector[0].abs() > 0.1 || diff_vector[0].abs() > 0.1) {
+                let dist = (diff_vector[0].powf(2.0) + diff_vector[1].powf(2.0)).sqrt();
+                if dist < 0.1 {
+                    return Some(index);
+                }
+            }
+            index += 1;
+        }
+        None
     }
 
     pub fn window(&self) -> &Window {
@@ -437,7 +457,14 @@ impl State {
                     ElementState::Pressed => {
                         let cursor_clip_x = ((self.cursor_pos[0] / self.size.width as f32 ) - 0.5) * 2.0;
                         let cursor_clip_y = ((self.cursor_pos[1] / self.size.height as f32) - 0.5) * -2.0;
-                        self.add_circle_instance([cursor_clip_x, cursor_clip_y]);
+                        match self.circle_at_location([cursor_clip_x, cursor_clip_y]) {
+                            Some(index) => {
+                                log::warn!("Clicked circle at index: {index}");
+                            },
+                            None => {
+                                self.add_circle_instance([cursor_clip_x, cursor_clip_y]);
+                            }
+                        }
                     },
                     ElementState::Released => {/* TODO */}
                 }
