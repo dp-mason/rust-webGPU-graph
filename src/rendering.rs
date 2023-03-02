@@ -1,4 +1,4 @@
-// TODO: create a sense of "world space". convert to and from clip space to world space
+
 // Received a ton of help from: https://sotrh.github.io/learn-wgpu/beginner/tutorial2-surface/#first-some-housekeeping-state
 use wgpu::{Instance, util::DeviceExt, DynamicOffset};
 use winit::{
@@ -29,6 +29,7 @@ struct GraphicsInput {
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct CircleInstance {
     position:[f32;3],
+    scale:f32
 }
 impl CircleInstance {
     // returns a vertex buffer layout used for storing this data type in a Vertex Buffer
@@ -43,7 +44,12 @@ impl CircleInstance {
                 wgpu::VertexAttribute{
                     offset:0,
                     shader_location:2,
-                    format:wgpu::VertexFormat::Float32x2,
+                    format:wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute{
+                    offset:std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    shader_location:3,
+                    format:wgpu::VertexFormat::Float32,
                 }
             ]
         }
@@ -128,6 +134,7 @@ pub struct State {
 
     cursor_pos:[f32;2],
     aspect_ratio:f32,
+    world_scale:f32,
     clip_to_world_transform:[[f32;4];4],
     
     graphics_input_buffer: wgpu::Buffer,
@@ -222,7 +229,8 @@ impl State {
 
         let circle_instances = [
             CircleInstance {
-                position:[0.0, 0.0, 0.0]
+                position:[0.0, 0.0, 0.0],
+                scale:1.0,
             },
             // CircleInstance {
             //     position:[0.0, 1.0]
@@ -272,17 +280,18 @@ impl State {
         // !!! WGSL INTERPRETS MATRICES AS SETS OF COLUMN VECTORS !!!
         // example: mat2x3 data type in wgsl is a matrix with 2 columns and 3 rows
         // https://gpuweb.github.io/gpuweb/wgsl/#matrix-types
+        let world_scale:f32 = 0.1;
         let world_to_clip_transfm:[[f32;4];4] = [
-            [aspect_ratio, 0.0, 0.0, 0.0],
-            [    0.0     , 1.0, 0.0, 0.0],
-            [    0.0     , 0.0, 1.0, 0.0],
-            [    0.0     , 0.0, 0.0, 1.0],
+            [aspect_ratio * world_scale,     0.0    , 0.0, 0.0],
+            [            0.0           , world_scale, 0.0, 0.0],
+            [            0.0           ,     0.0    , 1.0, 0.0],
+            [            0.0           ,     0.0    , 0.0, 1.0],
         ];
         let clip_to_world_transform:[[f32;4];4] = [
-            [1.0 / aspect_ratio, 0.0, 0.0, 0.0],
-            [       0.0        , 1.0, 0.0, 0.0],
-            [       0.0        , 0.0, 1.0, 0.0],
-            [       0.0        , 0.0, 0.0, 1.0],
+            [1.0 / (aspect_ratio*world_scale),         0.0      , 0.0, 0.0],
+            [               0.0              , 1.0 / world_scale, 0.0, 0.0],
+            [               0.0              ,         0.0      , 1.0, 0.0],
+            [               0.0              ,         0.0      , 0.0, 1.0],
         ];
 
         let graphics_input = GraphicsInput {
@@ -389,6 +398,7 @@ impl State {
             render_pipeline,
 
             aspect_ratio,
+            world_scale,
             clip_to_world_transform,
 
             cursor_pos:[0.0, 0.0],
@@ -405,9 +415,10 @@ impl State {
         }
     }
 
-    pub fn add_circle_instance(&mut self, clip_position:[f32;3]) {
+    pub fn add_circle_instance(&mut self, world_position:[f32;3]) {
         self.circle_instances.push(CircleInstance {
-            position:clip_position,
+            position:world_position,
+            scale:1.0,
         });
         
         log::warn!("Content of instances is: {:?}",self.circle_instances);
@@ -425,16 +436,16 @@ impl State {
 
     // takes a position in clip space (usually the mouse location) and returns the index of the circle instance
     // that exists there if one exists
-    // todo: move this to a compute shader once you figure out how that works
-    pub fn circle_at_location(&self, position:[f32; 2]) -> Option<usize> {
+    // todo: move this to a compute shader once you figure out how that can cooperate with the current browsers
+    pub fn circle_at_location(&self, target_world_pos:[f32; 2]) -> Option<usize> {
         let mut index = 0;
         for circle in &self.circle_instances {
             // calculate vector between origin of this circle instance ond passed position
-            let diff_vector = [circle.position[0] - position[0], circle.position[1] - position[1]];
+            let diff_vector:[f32;2] = [circle.position[0] - target_world_pos[0], circle.position[1] - target_world_pos[1]];
             // helps rule out circles before doing proper distance calculation
-            if !(diff_vector[0].abs() > 0.1 || diff_vector[0].abs() > 0.1) {
+            if !(diff_vector[0].abs() > circle.scale || diff_vector[1].abs() > circle.scale) {
                 let dist = (diff_vector[0].powf(2.0) + diff_vector[1].powf(2.0)).sqrt();
-                if dist < 0.1 {
+                if dist < circle.scale {
                     return Some(index);
                 }
             }
@@ -486,15 +497,15 @@ impl State {
                     ElementState::Pressed => {
                         let cursor_clip_x = ((self.cursor_pos[0] / self.size.width as f32 ) - 0.5) * 2.0;
                         let cursor_clip_y = ((self.cursor_pos[1] / self.size.height as f32) - 0.5) * -2.0;
-                        let world_position = dot_product(self.clip_to_world_transform, [cursor_clip_x, cursor_clip_y, 0.0, 1.0]);
+                        let cursor_world_pos = dot_product(self.clip_to_world_transform, [cursor_clip_x, cursor_clip_y, 0.0, 1.0]);
 
-                        match self.circle_at_location([cursor_clip_x, cursor_clip_y]) {
+                        match self.circle_at_location([cursor_world_pos[0], cursor_world_pos[1]]) {
                             Some(index) => {
                                 log::warn!("Clicked circle at index: {index}");
                             },
                             None => {
-                                log::warn!("new circle created at world location: {:?}", world_position);
-                                self.add_circle_instance([world_position[0], world_position[1], world_position[2]]);
+                                log::warn!("new circle created at world location: {:?}", cursor_world_pos);
+                                self.add_circle_instance([cursor_world_pos[0], cursor_world_pos[1], cursor_world_pos[2]]);
                             }
                         }
                     },
