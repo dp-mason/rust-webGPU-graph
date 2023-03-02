@@ -5,12 +5,27 @@ struct VertexOutput {
     @location(0) color:vec3<f32> // TODO: are we overwriting the vert buffer (position part that is at loc 0) ??
 };
 
+// !!! WGSL INTERPRETS MATRICES AS SETS OF COLUMN VECTORS !!!
+    // example: mat2x3 data type in wgsl is a matrix with 2 columns and 3 rows
+    // https://gpuweb.github.io/gpuweb/wgsl/#matrix-types
 struct GraphicsInput {
-    cursor_pos:vec4<f32>,
-    aspect_ratio:vec4<f32>
+    cursor_pixel_pos:vec4<f32>,
+    world_to_clip_transfm:mat4x4<f32>,
+    canvas_dimensions:vec4<u32>,
 }
+
 @group(0) @binding(0) var<uniform> graphics_input: GraphicsInput;
 
+
+// fn dot_prod(transform_matrix:mat4x4<f32>, vect:vec4<f32>) -> vec4<f32>{
+//     // TODO: does this conform to wgsl's understanding of matrices as a list of column vectors?
+//     var product:vec4<f32>;
+//     product[0] = transform_matrix[0][0] * vect[0] + transform_matrix[1][0] * vect[1] + transform_matrix[2][0] * vect[2] + transform_matrix[3][0] * vect[3];
+//     product[1] = transform_matrix[0][1] * vect[0] + transform_matrix[1][1] * vect[1] + transform_matrix[2][1] * vect[2] + transform_matrix[3][1] * vect[3];
+//     product[2] = transform_matrix[0][2] * vect[0] + transform_matrix[1][2] * vect[1] + transform_matrix[2][2] * vect[2] + transform_matrix[3][2] * vect[3];
+//     product[3] = transform_matrix[0][3] * vect[0] + transform_matrix[1][3] * vect[1] + transform_matrix[2][3] * vect[2] + transform_matrix[3][3] * vect[3];
+//     return product;
+// }
 
 // Vertex Shader
 // @location(0) is the position of the vert in clip space, written to the vertex buffer in rendering.rs
@@ -19,7 +34,7 @@ struct GraphicsInput {
 fn vert_main(
     @builtin(vertex_index) vert_index:u32, // we can use these because they are buffers defined and written to in the configuration of the vert buffers
     @builtin(instance_index) inst_index:u32,
-    @location(0) clip_position:vec3<f32>, 
+    @location(0) world_position:vec3<f32>, 
     @location(1) color:vec3<f32>,
     @location(2) instance_pos:vec2<f32>,
 ) -> VertexOutput {
@@ -27,13 +42,15 @@ fn vert_main(
     // write some data to the vertex's position attribute, THIS VALUE WILL BE CHANGED INBETWEEN THE VERT AND FRAG SHADERS
     if(vert_index < 4u){
         // the vert shader for the background
-        return_data.position = vec4<f32>(clip_position, 1.0);
+        return_data.position = vec4<f32>(world_position, 1.0); // dont transform to clip space, the background coords are actually already in clip space
         return_data.color = vec3<f32>(color[0], color[1], 0.0);
     }
     else {
         // the vert shader for the circle instances
         let scale:f32 = 0.1;
-        return_data.position = vec4<f32>(clip_position[0] * scale * graphics_input.aspect_ratio[0] + instance_pos[0], clip_position[1] * scale + instance_pos[1], 0.2, 1.0) ;
+        return_data.position = graphics_input.world_to_clip_transfm * vec4(world_position * scale + vec3(instance_pos, 0.0), 1.0);
+        
+        // todo: highlight this circle if the cursor is hovering over it
         return_data.color = vec3(0.0, 1.0, 0.0);
 
     }
@@ -51,12 +68,12 @@ fn frag_main(
     // into the framebuffer coordinate position of this fragment. This happened INBETWEEN vert and frag stages
     // whereas the color will be a direct interpolation of the value we assigned in the vert shader
     
-    var diff_vec = vert_data.position - graphics_input.cursor_pos;
+    var diff_vec = vert_data.position - graphics_input.cursor_pixel_pos;
     var cull = diff_vec[0] > 50.0 || diff_vec[1] > 50.0;
     if cull == false {
         var dist = length(diff_vec);
-        // creates a 50px radius red circle around the cursor
-        if dist < 50.0 {
+        // creates a 10px radius red circle around the cursor
+        if dist < 10.0 {
             return vec4<f32>(1.0, 0.0, 0.0, 1.0); 
         }
     }

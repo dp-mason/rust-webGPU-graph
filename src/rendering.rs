@@ -1,4 +1,4 @@
-
+// TODO: create a sense of "world space". convert to and from clip space to world space
 // Received a ton of help from: https://sotrh.github.io/learn-wgpu/beginner/tutorial2-surface/#first-some-housekeeping-state
 use wgpu::{Instance, util::DeviceExt, DynamicOffset};
 use winit::{
@@ -21,13 +21,14 @@ struct Vertex {
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct GraphicsInput {
     cursor_position:[f32;4],
-    aspect_ratio:[f32;4],
+    world_to_clip_transfm:[[f32;4];4],
+    canvas_dimensions:[u32;4],
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct CircleInstance {
-    position:[f32;2],
+    position:[f32;3],
 }
 impl CircleInstance {
     // returns a vertex buffer layout used for storing this data type in a Vertex Buffer
@@ -105,6 +106,15 @@ const TRI_INDEX_BUFFER:&[u16] = &[
     16 + CIRCLE_START_OFFSET, 17 + CIRCLE_START_OFFSET,  1 + CIRCLE_START_OFFSET,
 ];
 
+fn dot_product(transform_matrix:[[f32;4];4], vector:[f32;4]) -> [f32;4]{
+    [
+        transform_matrix[0][0] * vector[0] + transform_matrix[1][0] * vector[1] + transform_matrix[2][0] * vector[2] + transform_matrix[3][0] * vector[3],
+        transform_matrix[0][1] * vector[0] + transform_matrix[1][1] * vector[1] + transform_matrix[2][1] * vector[2] + transform_matrix[3][1] * vector[3],
+        transform_matrix[0][2] * vector[0] + transform_matrix[1][2] * vector[1] + transform_matrix[2][2] * vector[2] + transform_matrix[3][2] * vector[3],
+        transform_matrix[0][3] * vector[0] + transform_matrix[1][3] * vector[1] + transform_matrix[2][3] * vector[2] + transform_matrix[3][3] * vector[3],
+    ]
+}
+
 pub struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -118,8 +128,9 @@ pub struct State {
 
     cursor_pos:[f32;2],
     aspect_ratio:f32,
+    clip_to_world_transform:[[f32;4];4],
     
-    cursor_pos_ar_buffer: wgpu::Buffer,
+    graphics_input_buffer: wgpu::Buffer,
     
     uniform_bind_group: wgpu::BindGroup,
     
@@ -211,7 +222,7 @@ impl State {
 
         let circle_instances = [
             CircleInstance {
-                position:[0.0, 0.0]
+                position:[0.0, 0.0, 0.0]
             },
             // CircleInstance {
             //     position:[0.0, 1.0]
@@ -256,15 +267,32 @@ impl State {
         };
 
         let cursor_pos:[f32;4] = [-1.0, 1.0, 0.0, 1.0];
-        let aspect_ratio:[f32;4] = [size.height as f32 / size.width as f32, 0.0, 0.0, 0.0];
+        let aspect_ratio: f32 = size.height as f32 / size.width as f32;
+
+        // !!! WGSL INTERPRETS MATRICES AS SETS OF COLUMN VECTORS !!!
+        // example: mat2x3 data type in wgsl is a matrix with 2 columns and 3 rows
+        // https://gpuweb.github.io/gpuweb/wgsl/#matrix-types
+        let world_to_clip_transfm:[[f32;4];4] = [
+            [aspect_ratio, 0.0, 0.0, 0.0],
+            [    0.0     , 1.0, 0.0, 0.0],
+            [    0.0     , 0.0, 1.0, 0.0],
+            [    0.0     , 0.0, 0.0, 1.0],
+        ];
+        let clip_to_world_transform:[[f32;4];4] = [
+            [1.0 / aspect_ratio, 0.0, 0.0, 0.0],
+            [       0.0        , 1.0, 0.0, 0.0],
+            [       0.0        , 0.0, 1.0, 0.0],
+            [       0.0        , 0.0, 0.0, 1.0],
+        ];
 
         let graphics_input = GraphicsInput {
             cursor_position:cursor_pos,
-            aspect_ratio:aspect_ratio,
+            world_to_clip_transfm:world_to_clip_transfm,
+            canvas_dimensions:[size.height, size.width, 0, 0]
         };
 
         // create uniform buffer for the cursor position
-        let cursor_pos_ar_buffer = device.create_buffer_init(
+        let graphics_input_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor{
                 label: Some("Cursor Position and Aspect Ratio Buffer"),
                 contents: bytemuck::cast_slice(&[graphics_input]),
@@ -294,7 +322,7 @@ impl State {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: cursor_pos_ar_buffer.as_entire_binding(),
+                    resource: graphics_input_buffer.as_entire_binding(),
                 },
             ],
             label: Some("uniform_bind_group"),
@@ -360,10 +388,11 @@ impl State {
             
             render_pipeline,
 
-            aspect_ratio:aspect_ratio[0],
+            aspect_ratio,
+            clip_to_world_transform,
 
             cursor_pos:[0.0, 0.0],
-            cursor_pos_ar_buffer,
+            graphics_input_buffer,
             
             uniform_bind_group,
 
@@ -376,7 +405,7 @@ impl State {
         }
     }
 
-    pub fn add_circle_instance(&mut self, clip_position:[f32;2]) {
+    pub fn add_circle_instance(&mut self, clip_position:[f32;3]) {
         self.circle_instances.push(CircleInstance {
             position:clip_position,
         });
@@ -426,7 +455,7 @@ impl State {
             self.surface.configure(&self.device, &self.config);
         }
 
-        // TODO: write new aspect ratio to graphics_input buffer in state
+        // TODO: write new size to graphics input
     }
 
     // this is where more user input for rendering can be added
@@ -444,7 +473,7 @@ impl State {
                 self.cursor_pos = [position.x as f32, position.y as f32];
                 // write the new cursor pos to buffer
                 self.queue.write_buffer(
-                    &self.cursor_pos_ar_buffer, 
+                    &self.graphics_input_buffer, 
                     0, 
                     bytemuck::cast_slice(&[[
                         [self.cursor_pos[0], self.cursor_pos[1], 0.0f32, 1.0f32]
@@ -457,12 +486,15 @@ impl State {
                     ElementState::Pressed => {
                         let cursor_clip_x = ((self.cursor_pos[0] / self.size.width as f32 ) - 0.5) * 2.0;
                         let cursor_clip_y = ((self.cursor_pos[1] / self.size.height as f32) - 0.5) * -2.0;
+                        let world_position = dot_product(self.clip_to_world_transform, [cursor_clip_x, cursor_clip_y, 0.0, 1.0]);
+
                         match self.circle_at_location([cursor_clip_x, cursor_clip_y]) {
                             Some(index) => {
                                 log::warn!("Clicked circle at index: {index}");
                             },
                             None => {
-                                self.add_circle_instance([cursor_clip_x, cursor_clip_y]);
+                                log::warn!("new circle created at world location: {:?}", world_position);
+                                self.add_circle_instance([world_position[0], world_position[1], world_position[2]]);
                             }
                         }
                     },
