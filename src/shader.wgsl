@@ -37,7 +37,7 @@ fn vert_main(
     }
     else {
         // the vert shader for the circle instances
-        return_data.position = graphics_input.world_to_clip_transfm * vec4(world_position + vec3(instance_pos, 0.0), 1.0);
+        return_data.position = graphics_input.world_to_clip_transfm * vec4(world_position * instance_scale + vec3(instance_pos, 0.0), 1.0);
         
         // todo: highlight this circle if the cursor is hovering over it
         return_data.color = vec3(0.0, 1.0, 0.0);

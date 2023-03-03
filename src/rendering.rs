@@ -415,10 +415,10 @@ impl State {
         }
     }
 
-    pub fn add_circle_instance(&mut self, world_position:[f32;3]) {
+    pub fn add_circle_instance(&mut self, world_position:[f32;3], scale:f32) {
         self.circle_instances.push(CircleInstance {
             position:world_position,
-            scale:1.0,
+            scale:scale,
         });
         
         log::warn!("Content of instances is: {:?}",self.circle_instances);
@@ -452,6 +452,18 @@ impl State {
             index += 1;
         }
         None
+    }
+
+    pub fn expand_circle(&mut self, circle_index:usize) -> Result<(), &str> {
+        if circle_index < self.circle_instances.len() {
+            // create a new circle half the size of the original to the right of the targeted circle
+            let target_circle:&CircleInstance = &self.circle_instances[circle_index];
+            let new_circle_world_pos = [target_circle.position[0] + target_circle.scale * 2.0, target_circle.position[1], target_circle.position[2]];
+            let new_circle_scale = target_circle.scale * 0.5;
+            self.add_circle_instance(new_circle_world_pos, new_circle_scale);
+            return Ok(());
+        }
+        Err("index out of bounds")
     }
 
     pub fn window(&self) -> &Window {
@@ -502,10 +514,14 @@ impl State {
                         match self.circle_at_location([cursor_world_pos[0], cursor_world_pos[1]]) {
                             Some(index) => {
                                 log::warn!("Clicked circle at index: {index}");
+                                match self.expand_circle(index) {
+                                    Err(msg) => log::warn!("{msg}"),
+                                    Ok(_) => {}
+                                }
                             },
                             None => {
                                 log::warn!("new circle created at world location: {:?}", cursor_world_pos);
-                                self.add_circle_instance([cursor_world_pos[0], cursor_world_pos[1], cursor_world_pos[2]]);
+                                self.add_circle_instance([cursor_world_pos[0], cursor_world_pos[1], cursor_world_pos[2]], 1.0);
                             }
                         }
                     },
